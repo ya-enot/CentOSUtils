@@ -121,7 +121,7 @@ installGoRoot() {
 		done
 	}
 	[ "$RECOMPILE" -a "$RECOMPILE" = "1" ] && {
-		GOROOT_BOOTSTRAP="${GOROOT_BOOTSTRAP:-$(selectGoRoot 0 "Select bootstrap Go version")}"
+		local GOROOT_BOOTSTRAP="${GOROOT_BOOTSTRAP:-$(selectGoRoot 0 "Select bootstrap Go version")}"
     	[ -z "$GOROOT_BOOTSTRAP" ] && {
     		echo "You need bootstrap version of Go for building $GOVER"
     		exit 1
@@ -136,12 +136,11 @@ installGoRoot() {
 		git clone -b "$GOVER" "https://github.com/golang/go.git" "$GOROOT" || exit 1
 	}
 	[ "$RECOMPILE" -a "$RECOMPILE" = "1" ] && {
-	    (cd "$GOROOT/src" && ./all.bash) && echo "GOROOT_BOOTSTRAP=$GOROOT_BOOTSTRAP"
+	    (cd "$GOROOT/src" && env GOROOT_BOOTSTRAP="$GOROOT_BOOTSTRAP" ./all.bash)
 	}
 }
 
 checkInstallGoRoot() {
-
 	[ ! -d "$GODISTPATH" ] && {
 		[ "$(id -u)" != "$(stat -c '%u' "$GOROOTPATH")" -o "$(hasgroup $(stat -c '%g' "$GOROOTPATH") $(id -G))" != "true" ] && {
 			sudo -u "#$(stat -c '%u' "$GOROOTPATH")" mkdir -p "$GODISTPATH"
