@@ -71,7 +71,7 @@ installGoRoot() {
 		for GITTAG in "${GITTAGARR[@]}"
 		do
 			printf '%s\n' "$((++I))) ${GITTAG}"
-		done | less -P "Choose version number, then press q"
+		done | less -P "Choose version number, then press q" >&2
 		printf %s "${PS3-#? }" >&2 # Print the prompt string to stderr, as `select` does.
 		read -r index
 		# Make sure that the input is either empty or that a valid index was entered.
