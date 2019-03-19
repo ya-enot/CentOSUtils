@@ -132,11 +132,12 @@ installGoRoot() {
 			echo "Failed to delete folder $GOROOT"
 			exit 1
 		}
-		echo "Installing $GOVER into $GOROOT using $("$GOROOT_BOOTSTRAP"/bin/go version)"
-		git clone -b "$GOVER" "https://github.com/golang/go.git" "$GOROOT" || exit 1
+		echo "Installing $GOVER into $GOROOT"
+		git -c advice.detachedHead=false clone -b "$GOVER" "https://github.com/golang/go.git" "$GOROOT" || exit 1
 	}
 	[ "$RECOMPILE" -a "$RECOMPILE" = "1" ] && {
-	    (cd "$GOROOT/src" && env GOROOT_BOOTSTRAP="$GOROOT_BOOTSTRAP" ./all.bash)
+		echo "Compiling $GOVER using $("$GOROOT_BOOTSTRAP"/bin/go version)"
+	    (cd "$GOROOT/src" && env GOROOT_BOOTSTRAP="$GOROOT_BOOTSTRAP" ./all.bash) || exit 1
 	}
 }
 
