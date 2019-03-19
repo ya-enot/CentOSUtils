@@ -1,0 +1,189 @@
+#!/bin/sh
+
+GOROOTPATH="${GOROOTPATH:-/opt}"
+GODISTDIR="${GODISTDIR:-golang}"
+
+#################################################
+
+printUsage() {
+	:
+}
+
+GOROOTPATH="${GOROOTPATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)}"
+GODISTPATH="${2:-$GOROOTPATH/${GODISTDIR:-golang}}"
+
+selectGoRoot() {
+	local GODIRARR=("$GODISTPATH"/*)
+	local GOVERMAP=()
+	local GOVERARR=()
+	local I=0
+	for GODIR in "${GODIRARR[@]}"
+	do
+        GOVERARR[$I]="$("$GODIR/bin/go" version 2>/dev/null)"
+        [ ! -z "${GOVERARR[$I]}" ] && GOVERMAP+=($I)
+        (( ++I ))
+    done
+    local LOCALGO=$(command -v go)
+    [ ! -z "$LOCALGO" ] && {
+    	GODIRARR[$I]="$("$LOCALGO" env GOROOT)"
+    	GOVERARR[$I]="$("$LOCALGO" version 2>/dev/null)"
+    	GOVERMAP+=($I)
+        (( ++I ))
+    }
+    [ ${#GOVERMAP[@]} -lt 1 ] && {
+    	echo "You need to install Go from repository before using $0"
+    }
+    local indexDefault=$I
+    (( --indexDefault ))
+	[ -z "$1" -o "$1" = "1" ] && {
+	    GOVERARR[$I]="Install another Go version"
+	    GOVERMAP+=($I)
+	}
+	local PS3="${2:-Please select Go version} [default: $indexDefault]: "
+	local numItems=${#GOVERMAP[@]}
+	local index
+	while true
+	do
+	    local I=0
+		for GOVERM in "${GOVERMAP[@]}"
+		do
+			printf '%s\n' "$((++I))) ${GOVERARR[$GOVERM]}"
+		done >&2 # Print to stderr, as `select` does.
+		printf %s "${PS3-#? }" >&2 # Print the prompt string to stderr, as `select` does.
+		read -r index
+		# Make sure that the input is either empty or that a valid index was entered.
+		[ -z "$index" ] && break  # empty input
+		(( index >= 1 && index <= numItems )) 2>/dev/null || { echo "Invalid selection. Please try again." >&2; continue; }
+		break
+	done
+	[ -z "$index" ] && index=$indexDefault
+	(( --index ))
+	echo "${GODIRARR[${GOVERMAP[$index]}]}"
+}
+
+installGoRoot() {
+	local GITTAGARR=($(git ls-remote --tags https://github.com/golang/go.git | sed 's/.*refs\/tags\/\(.*\)/\1/' | grep -E 'go[0-9]+\.[0-9]+\.'))
+	local PS3="Select Go version to install [default: show versions]: "
+	local numItems=${#GITTAGARR[@]}
+	while true
+	do
+		local I=0
+		for GITTAG in "${GITTAGARR[@]}"
+		do
+			printf '%s\n' "$((++I))) ${GITTAG}"
+		done | less -P "Choose version number, then press q"
+		printf %s "${PS3-#? }" >&2 # Print the prompt string to stderr, as `select` does.
+		read -r index
+		# Make sure that the input is either empty or that a valid index was entered.
+		[ -z "$index" ] && continue  # empty input
+		(( index >= 1 && index <= numItems )) 2>/dev/null || { echo "Invalid selection. Please try again." >&2; continue; }
+		break
+	done
+	(( --index ))
+	local GOVER="${GITTAGARR[$index]}"
+	echo "Version $GOVER selected"
+	local GOROOT="$GODISTPATH/src-$GOVER"
+	local REINSTALL=1
+	local RECOMPILE=1
+	local yn
+	[ -d "$GOROOT" ] && echo "Folder $GOROOT exists"
+	while [ -d "$GOROOT" ]
+	do
+		read -p "Reinstall?: " yn
+		case "$yn" in
+			[Yy]* )
+			[ -d "$GOROOT" ] &&  rm -rf "$GOROOT"
+			break
+			;;
+			[Nn]* )
+			local REINSTALL=0
+			break
+			;;
+			* ) echo "Please answer yes or no.";;
+		esac
+	done
+	[ "$REINSTALL" -a "$REINSTALL" = "0" ] && {
+		local yn=""
+		while [ -z "$yn" ]
+		do
+			read -p "Recompile?: " yn
+			case "$yn" in
+				[Yy]* )
+				local RECOMPILE=1
+				break
+				;;
+				[Nn]* )
+				local RECOMPILE=0
+				break
+				;;
+				* ) echo "Please answer yes or no.";;
+			esac
+		done
+	}
+	[ "$RECOMPILE" -a "$RECOMPILE" = "1" ] && {
+		local GOROOT_BOOTSTRAP="${GOROOT_BOOTSTRAP:-$(selectGoRoot 0 "Select bootstrap Go version")}"
+    	[ -z "$GOROOT_BOOTSTRAP" ] && {
+    		echo "You need bootstrap version of Go for building $GOVER"
+    		exit 1
+    	}
+	}
+	[ "$REINSTALL" -a "$REINSTALL" = "1" ] && {
+		[ -d "$GOROOT" ] && {
+			echo "Failed to delete folder $GOROOT"
+			exit 1
+		}
+		echo "Installing $GOVER into $GOROOT using $("$GOROOT_BOOTSTRAP"/bin/go version)"
+		git clone -b "$GOVER" "https://github.com/golang/go.git" "$GOROOT" || exit 1
+	}
+	[ "$RECOMPILE" -a "$RECOMPILE" = "1" ] && {
+	    (cd "$GOROOT/src" && env GOROOT_BOOTSTRAP="$GOROOT_BOOTSTRAP" ./all.bash)
+	}
+}
+
+checkInstallGoRoot() {
+	[ ! -d "$GODISTPATH" ] && {
+		[ "$(id -u)" != "$(stat -c '%u' "$GOROOTPATH")" -o "$(hasgroup $(stat -c '%g' "$GOROOTPATH") $(id -G))" != "true" ] && {
+			sudo -u "#$(stat -c '%u' "$GOROOTPATH")" mkdir -p "$GODISTPATH"
+		} || mkdir -p "$GODISTPATH"
+	}
+	[ "$(id -u)" != "$(stat -c '%u' "$GODISTPATH")" -o "$(hasgroup $(stat -c '%g' "$GODISTPATH") $(id -G))" != "true" ] && {
+		sudo -u "#$(stat -c '%u' "$GODISTPATH")" $0 install "$GODISTPATH"
+	} || $0 install "$GODISTPATH"
+}
+
+hasgroup() {
+	local CHECK=$1
+	shift
+	for GID in "$@"
+	do
+		[ "$GID" = "$CHECK" ] && {
+			echo "true"
+			break
+		}
+	done
+}
+
+case "${1:-select}" in
+	"select")
+		GOROOT=$(selectGoRoot)
+		while [ -z "$GOROOT" ]
+		do
+			checkInstallGoRoot
+			GOROOT=$(selectGoRoot)
+		done
+		echo $GOROOT
+		break
+		;;
+	"install")
+		[ "$(id -u)" != "$(stat -c '%u' "$GODISTPATH")" -o "$(hasgroup $(stat -c '%g' "$GODISTPATH") $(id -G))" != "true" ] && {
+			echo "You have no privileges to install in $GODISTPATH"
+			exit 1
+		}
+		installGoRoot
+		break
+		;;
+	*)
+		printUsage
+		exit 1
+		;;
+esac
