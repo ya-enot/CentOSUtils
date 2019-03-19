@@ -24,7 +24,7 @@ selectGoRoot() {
         (( ++I ))
     done
     local LOCALGO=$(command -v go)
-    [ ! -z "$LOCALGO" ] && {
+    [ ! -z "$LOCALGO" -a -x "$LOCALGO" ] && {
     	GODIRARR[$I]="$("$LOCALGO" env GOROOT)"
     	GOVERARR[$I]="$("$LOCALGO" version 2>/dev/null)"
     	GOVERMAP+=($I)
