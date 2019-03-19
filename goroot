@@ -33,7 +33,7 @@ selectGoRoot() {
     [ ${#GOVERMAP[@]} -lt 1 ] && {
     	echo "You need to install Go from repository before using $0"
     }
-    local indexDefault=$I
+    local indexDefault=${#GOVERMAP[@]}
     (( --indexDefault ))
 	[ -z "$1" -o "$1" = "1" ] && {
 	    GOVERARR[$I]="Install another Go version"
